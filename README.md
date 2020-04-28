@@ -1,2 +1,2 @@
 # AndroidApp
-To make an android app which will be helpful during covid 19.
+To make an website which will be helpful during covid 19.
