@@ -1,0 +1,53 @@
+import conf,json,time,math,statistics
+from boltiot import Sms,Bolt
+def compute_bounds(history_data,frame_size,factor):
+	if len(history_data)<frame_size:
+		return None
+	if len(history_data)>frame_size:
+		del history_data[0:len(history_data)-frame_size]
+	Mn=statistics.mean(history_data)
+	variance=0
+	for data in history_data:
+		variance+=math.pow((data-Mn),2)
+	Zn=factor* math.sqrt(variance/frame_size)
+	High_bound=history_data[frame_size-1]+Zn
+	Low_bound=history_data[frame_size-1]-Zn
+	return [High_bound,Low_bound]
+mybolt=Bolt(conf.API_KEY,conf.DEVICE_ID)
+sms=Sms(conf.SSID,conf.AUTH_TOKEN,conf.TO_NUMBER,conf.FROM_NUMBER)
+history_data=[]
+
+while True:
+	response=mybolt.analogRead('A0')
+	data=json.loads(response)
+	if data['success']!=1:
+		print("there was an error while retrieving the data")
+		print("this is the error:"+data['value'])
+		time.sleep(10)
+		continue
+	print("this is the value "+data['value'])
+	sensor_value=0
+	try:
+		sensor_value=int(data['value'])
+	except e:
+		print("there was an error while parsing the response: ",e)
+		continue
+	bound=compute_bounds(history_data,conf.FRAME_SIZE,conf.MUL_FACTOR)
+	if not bound:
+		required_data_count=conf.FRAME_SIZE-len(history_data)
+		print("not enough data to compute z-score, Need",required_data_count,"more data points")
+		history_data.append(int(data['value']))
+		time.sleep(10)
+		continue
+	try:
+		if sensor_value>bound[0]:
+			print("the light level increased suddenly")
+			response=sms.send_sms("someone turned on the lights")
+			print("this is a response ",response)
+		elif sensor_value<bound[1]:
+			print("the light level is decreased suddenly")
+			response=sms.send_sms("Someone turned off the lights")
+		history_data.append(sensor_value)
+	except exception is e:
+		print('Error',e)
+	time.sleep(10)
